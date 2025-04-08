@@ -19,7 +19,14 @@ rules:
   - update
   - get
 - apiGroups:
-  - "*"
+  - cert-manager.io
+  resources:
+  - clusterissuers
+  - issuers
+  verbs:
+  - get
+- apiGroups:
+  - "networking.istio.io"
   resources:
   - gateways
   verbs:
