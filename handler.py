@@ -13,13 +13,17 @@ class IstioHandler:
         self.request_object = request_object
         self.kubernetes_utility = kubernetes_utility
         self.certificate_data = {}
-        self._check_gateway_exists()
+        self.gateway_data = {}
         self._handle_annotations()
+        self._check_gateway_exists()
 
     def create_certificate(self):
         try:
-            gateway_metadata = self.request_object["metadata"]
-            gateway_spec = self.request_object["spec"]
+            if self.gateway_data == {}:
+                logging.error("Gateway data is empty, hence skipping certificate creation")
+                return
+            gateway_metadata = self.gateway_data["metadata"]
+            gateway_spec = self.gateway_data["spec"]
             owner_reference = GatewayOwnerReferenceSchema(
                 name=gateway_metadata["name"], uid=gateway_metadata["uid"]
             )
@@ -52,15 +56,15 @@ class IstioHandler:
 
     def create_gateway(self):
         try:
-            self.kubernetes_utility.create_istio_gateway(
-                f"{self.request_object['metadata']['name']}-gateway",
-                self.request_object["spec"]["hosts"],
-                f"{self.request_object['metadata']['namespace']}-tls",
-                VirtualServiceOwnerReferenceSchema(
-                    name=self.request_object["metadata"]["name"],
-                    uid=self.request_object["metadata"]["uid"],
+            self.gateway_data = self.kubernetes_utility.create_istio_gateway(
+                    f"{self.request_object['metadata']['name']}",
+                    f"{self.request_object['metadata']['namespace']}",
+                    self.request_object["spec"]["hosts"],
+                    VirtualServiceOwnerReferenceSchema(
+                        name=self.request_object["metadata"]["name"],
+                        uid=self.request_object["metadata"]["uid"],
+                    )
                 )
-            )
             logging.info(
                 f"Gateway {self.request_object['metadata']['name']}-gateway created successfully"
             )
@@ -104,7 +108,9 @@ class IstioHandler:
 
     def _check_gateway_exists(self):
         gateway_name = self.request_object["spec"]["gateways"][0]
-        if self.kubernetes_utility.get_istio_gateway(
+        if "/" in gateway_name:
+            return
+        elif self.kubernetes_utility.get_istio_gateway(
             gateway_name, self.request_object["metadata"]["namespace"]
         ):
             logging.error(

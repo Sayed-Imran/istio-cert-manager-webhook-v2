@@ -14,6 +14,7 @@ async def validate(request: Request, bg_tasks: BackgroundTasks):
     try:
         data = await request.json()
         istio_handler = IstioHandler(data["request"]["object"])
+        bg_tasks.add_task(istio_handler.create_gateway)
         bg_tasks.add_task(istio_handler.create_certificate)
         response = ControllerResponseSchema(
             response=AdmissionResponseSchema(

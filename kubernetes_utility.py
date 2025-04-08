@@ -30,7 +30,7 @@ class KubernetesUtility:
         self, certificate: CertificateSchema, owner_reference: GatewayOwnerReferenceSchema
     ):
         certificate_body = {
-            "apiVersion": f"{"cert-manager.io"}/{"v1"}",
+            "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
             "metadata": {
                 "name": certificate.name,
@@ -64,7 +64,7 @@ class KubernetesUtility:
         self, certificate: CertificateSchema, owner_reference: GatewayOwnerReferenceSchema
     ):
         certificate_data = {
-            "apiVersion": f"{"cert-manager.io"}/{"v1"}",
+            "apiVersion": "cert-manager.io/v1",
             "kind": "Certificate",
             "metadata": {
                 "name": certificate.name,
@@ -141,13 +141,13 @@ class KubernetesUtility:
             raise
 
 
-    def create_istio_gateway(self, name: str, hosts: list[str], certificate_name: str, owner_reference: VirtualServiceOwnerReferenceSchema):
+    def create_istio_gateway(self, name: str, namespace:str, hosts: list[str], owner_reference: VirtualServiceOwnerReferenceSchema):
         gateway = {
             "apiVersion": "networking.istio.io/v1",
             "kind": "Gateway",
             "metadata": {
                 "name": name,
-                "namespace": "istio-system",
+                "namespace": namespace,
                 "ownerReferences": [owner_reference.model_dump()],
             },
             "spec": {
@@ -163,7 +163,7 @@ class KubernetesUtility:
                         },
                         "tls": {
                             "mode": "SIMPLE",
-                            "credentialName": certificate_name,
+                            "credentialName": name,
                         },
                         "hosts": hosts,
                     }
@@ -172,10 +172,10 @@ class KubernetesUtility:
         }
 
         try:
-            self.client.create_namespaced_custom_object(
+            return self.client.create_namespaced_custom_object(
                 "networking.istio.io",
                 "v1",
-                "istio-system",
+                namespace,
                 "gateways",
                 gateway,
             )
@@ -184,7 +184,7 @@ class KubernetesUtility:
             if e.status == 409:
                 logging.error(f"Istio Gateway {name} already exists.")
                 raise GatewayAlreadyExists(
-                    f"Istio Gateway {name} already exists in namespace istio-system"
+                    f"Istio Gateway {name} already exists"
                 )
             else:
                 raise
