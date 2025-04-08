@@ -13,9 +13,17 @@ class CertificateSchema(BaseModel):
     renew_before: str
 
 
-class OwnerReferenceSchema(BaseModel):
+class GatewayOwnerReferenceSchema(BaseModel):
     apiVersion: str = "networking.istio.io/v1"
     kind: str = "Gateway"
+    name: str
+    uid: str
+    controller: bool = True
+    blockOwnerDeletion: bool = True
+
+class VirtualServiceOwnerReferenceSchema(BaseModel):
+    apiVersion: str = "networking.istio.io/v1"
+    kind: str = "VirtualService"
     name: str
     uid: str
     controller: bool = True
