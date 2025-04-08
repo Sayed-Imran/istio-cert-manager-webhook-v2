@@ -60,6 +60,7 @@ class IstioHandler:
                     f"{self.request_object['metadata']['name']}",
                     f"{self.request_object['metadata']['namespace']}",
                     self.request_object["spec"]["hosts"],
+                    f"{self.request_object['metadata']['name']}-tls",
                     VirtualServiceOwnerReferenceSchema(
                         name=self.request_object["metadata"]["name"],
                         uid=self.request_object["metadata"]["uid"],

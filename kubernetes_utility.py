@@ -141,7 +141,7 @@ class KubernetesUtility:
             raise
 
 
-    def create_istio_gateway(self, name: str, namespace:str, hosts: list[str], owner_reference: VirtualServiceOwnerReferenceSchema):
+    def create_istio_gateway(self, name: str, namespace:str, hosts: list[str], credential_name: str ,owner_reference: VirtualServiceOwnerReferenceSchema):
         gateway = {
             "apiVersion": "networking.istio.io/v1",
             "kind": "Gateway",
@@ -163,7 +163,7 @@ class KubernetesUtility:
                         },
                         "tls": {
                             "mode": "SIMPLE",
-                            "credentialName": name,
+                            "credentialName": credential_name,
                         },
                         "hosts": hosts,
                     }
