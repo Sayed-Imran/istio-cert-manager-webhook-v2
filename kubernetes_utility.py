@@ -3,25 +3,22 @@ import logging
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
-from errors import ClusterIssuerDoesnotExist, IssuerDoesnotExist
-from schemas import CertificateSchema, OwnerReferenceSchema
+from errors import ClusterIssuerDoesnotExist, IssuerDoesnotExist, GatewayAlreadyExists
+from schemas import CertificateSchema, GatewayOwnerReferenceSchema, VirtualServiceOwnerReferenceSchema
 
 
 class KubernetesUtility:
     def __init__(self):
         config.load_config()
         self.client = client.CustomObjectsApi()
-        self.custom_object_group = "cert-manager.io"
-        self.custom_object_version = "v1"
-        self.custom_object_plural = "certificates"
 
     def get_certificate(self, name, namespace):
         try:
             return self.client.get_namespaced_custom_object(
-                self.custom_object_group,
-                self.custom_object_version,
+                "cert-manager.io",
+                "v1",
                 namespace,
-                self.custom_object_plural,
+                "certificates",
                 name,
             )
         except ApiException as e:
@@ -30,10 +27,10 @@ class KubernetesUtility:
             raise
 
     def create_certificate(
-        self, certificate: CertificateSchema, owner_reference: OwnerReferenceSchema
+        self, certificate: CertificateSchema, owner_reference: GatewayOwnerReferenceSchema
     ):
         certificate_body = {
-            "apiVersion": f"{self.custom_object_group}/{self.custom_object_version}",
+            "apiVersion": f"{"cert-manager.io"}/{"v1"}",
             "kind": "Certificate",
             "metadata": {
                 "name": certificate.name,
@@ -51,23 +48,23 @@ class KubernetesUtility:
                 "issuerRef": {
                     "name": certificate.issuer_name,
                     "kind": certificate.issuer_kind,
-                    "group": self.custom_object_group,
+                    "group": "cert-manager.io",
                 },
             },
         }
         self.client.create_namespaced_custom_object(
-            self.custom_object_group,
-            self.custom_object_version,
+            "cert-manager.io",
+            "v1",
             certificate.namespace,
-            self.custom_object_plural,
+            "certificates",
             certificate_body,
         )
 
     def update_certificate(
-        self, certificate: CertificateSchema, owner_reference: OwnerReferenceSchema
+        self, certificate: CertificateSchema, owner_reference: GatewayOwnerReferenceSchema
     ):
         certificate_data = {
-            "apiVersion": f"{self.custom_object_group}/{self.custom_object_version}",
+            "apiVersion": f"{"cert-manager.io"}/{"v1"}",
             "kind": "Certificate",
             "metadata": {
                 "name": certificate.name,
@@ -85,15 +82,15 @@ class KubernetesUtility:
                 "issuerRef": {
                     "name": certificate.issuer_name,
                     "kind": certificate.issuer_kind,
-                    "group": self.custom_object_group,
+                    "group": "cert-manager.io",
                 },
             },
         }
         self.client.replace_namespaced_custom_object(
-            self.custom_object_group,
-            self.custom_object_version,
+            "cert-manager.io",
+            "v1",
             certificate.namespace,
-            self.custom_object_plural,
+            "certificates",
             certificate.name,
             certificate_data,
         )
@@ -101,8 +98,8 @@ class KubernetesUtility:
     def get_issuer(self, name, namespace):
         try:
             return self.client.get_namespaced_custom_object(
-                self.custom_object_group,
-                self.custom_object_version,
+                "cert-manager.io",
+                "v1",
                 namespace,
                 "issuers",
                 name,
@@ -117,8 +114,8 @@ class KubernetesUtility:
     def get_cluster_issuer(self, name):
         try:
             return self.client.get_cluster_custom_object(
-                self.custom_object_group,
-                self.custom_object_version,
+                "cert-manager.io",
+                "v1",
                 "clusterissuers",
                 name,
             )
@@ -126,3 +123,68 @@ class KubernetesUtility:
             logging.error(f"Error fetching cluster issuer: {e}")
             if e.status == 404:
                 raise ClusterIssuerDoesnotExist(f"ClusterIssuer {name} does not exist")
+
+
+    def get_istio_gateway(self, name, namespace):
+        try:
+            return self.client.get_namespaced_custom_object(
+                "networking.istio.io",
+                "v1",
+                namespace,
+                "gateways",
+                name,
+            )
+        except ApiException as e:
+            logging.error(f"Error fetching Istio Gateway: {e}")
+            if e.status == 404:
+                return None
+            raise
+
+
+    def create_istio_gateway(self, name: str, hosts: list[str], certificate_name: str, owner_reference: VirtualServiceOwnerReferenceSchema):
+        gateway = {
+            "apiVersion": "networking.istio.io/v1",
+            "kind": "Gateway",
+            "metadata": {
+                "name": name,
+                "namespace": "istio-system",
+                "ownerReferences": [owner_reference.model_dump()],
+            },
+            "spec": {
+                "selector": {
+                    "istio": "ingressgateway",
+                },
+                "servers": [
+                    {
+                        "port": {
+                            "number": 443,
+                            "name": "https",
+                            "protocol": "HTTPS",
+                        },
+                        "tls": {
+                            "mode": "SIMPLE",
+                            "credentialName": certificate_name,
+                        },
+                        "hosts": hosts,
+                    }
+                ]
+            }
+        }
+
+        try:
+            self.client.create_namespaced_custom_object(
+                "networking.istio.io",
+                "v1",
+                "istio-system",
+                "gateways",
+                gateway,
+            )
+        except ApiException as e:
+            logging.error(f"Error creating Istio Gateway: {e}")
+            if e.status == 409:
+                logging.error(f"Istio Gateway {name} already exists.")
+                raise GatewayAlreadyExists(
+                    f"Istio Gateway {name} already exists in namespace istio-system"
+                )
+            else:
+                raise
