@@ -1,25 +1,26 @@
 import logging
 
 from config import CertificateConfig
-from errors import AnnotationDoesNotExist
+from errors import AnnotationDoesNotExist, GatewayAlreadyExists
 from kubernetes_utility import KubernetesUtility
-from schemas import CertificateSchema, OwnerReferenceSchema
+from schemas import CertificateSchema, GatewayOwnerReferenceSchema, VirtualServiceOwnerReferenceSchema
 
+kubernetes_utility = KubernetesUtility()
 
-class CertificateHandler:
+class IstioHandler:
     def __init__(self, request_object: dict):
 
         self.request_object = request_object
-        self.kubernetes_utility = KubernetesUtility()
+        self.kubernetes_utility = kubernetes_utility
         self.certificate_data = {}
-        self._handle_annotations(request_object["metadata"]["annotations"])
+        self._check_gateway_exists()
+        self._handle_annotations()
 
     def create_certificate(self):
         try:
             gateway_metadata = self.request_object["metadata"]
-            # self._handle_annotations(gateway_metadata["annotations"])
             gateway_spec = self.request_object["spec"]
-            owner_reference = OwnerReferenceSchema(
+            owner_reference = GatewayOwnerReferenceSchema(
                 name=gateway_metadata["name"], uid=gateway_metadata["uid"]
             )
             certificate = CertificateSchema(
@@ -49,7 +50,31 @@ class CertificateHandler:
         except Exception as e:
             raise e
 
-    def _handle_annotations(self, gateway_annotations: dict):
+    def create_gateway(self):
+        try:
+            self.kubernetes_utility.create_istio_gateway(
+                f"{self.request_object['metadata']['name']}-gateway",
+                self.request_object["spec"]["hosts"],
+                f"{self.request_object['metadata']['namespace']}-tls",
+                VirtualServiceOwnerReferenceSchema(
+                    name=self.request_object["metadata"]["name"],
+                    uid=self.request_object["metadata"]["uid"],
+                )
+            )
+            logging.info(
+                f"Gateway {self.request_object['metadata']['name']}-gateway created successfully"
+            )
+        except GatewayAlreadyExists as e:
+            logging.error(
+                f"Gateway {self.request_object['metadata']['name']}-gateway already exists"
+            )
+            raise e
+        except Exception as e:
+            logging.error(f"Error creating gateway: {e}")
+            raise e
+
+    def _handle_annotations(self):
+        gateway_annotations = self.request_object["metadata"]["annotations"]
         issuer = gateway_annotations.get("cert-manager.io/issuer")
         cluster_issuer = gateway_annotations.get("cert-manager.io/cluster-issuer")
 
@@ -75,3 +100,22 @@ class CertificateHandler:
         self.certificate_data["renew_before"] = gateway_annotations.get(
             "cert-manager.io/renew-before", CertificateConfig.renew_before
         )
+
+
+    def _check_gateway_exists(self):
+        gateway_name = self.request_object["spec"]["gateways"][0]
+        if self.kubernetes_utility.get_istio_gateway(
+            gateway_name, self.request_object["metadata"]["namespace"]
+        ):
+            logging.error(
+                f"Gateway {gateway_name} already exists"
+            )
+            raise GatewayAlreadyExists(
+                f"Gateway {gateway_name} already exists"
+            )
+
+        else:
+            logging.info(
+                f"Gateway {gateway_name} does not exist"
+            )
+

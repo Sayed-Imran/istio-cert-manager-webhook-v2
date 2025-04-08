@@ -20,3 +20,7 @@ class ClusterIssuerDoesnotExist(Exception):
     """Exception raised when a cluster issuer does not exist."""
 
     pass
+
+class GatewayAlreadyExists(Exception):
+    """Exception raised when a gateway already exists."""
+    pass

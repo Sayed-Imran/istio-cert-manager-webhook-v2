@@ -3,7 +3,7 @@ import logging
 from fastapi import BackgroundTasks, FastAPI, Request
 
 from errors import AnnotationDoesNotExist
-from handler import CertificateHandler
+from handler import IstioHandler
 from schemas import AdmissionResponseSchema, ControllerResponseSchema
 
 app = FastAPI()
@@ -13,8 +13,8 @@ app = FastAPI()
 async def validate(request: Request, bg_tasks: BackgroundTasks):
     try:
         data = await request.json()
-        certificate_handler = CertificateHandler(data["request"]["object"])
-        bg_tasks.add_task(certificate_handler.create_certificate)
+        istio_handler = IstioHandler(data["request"]["object"])
+        bg_tasks.add_task(istio_handler.create_certificate)
         response = ControllerResponseSchema(
             response=AdmissionResponseSchema(
                 uid=data["request"]["uid"],
