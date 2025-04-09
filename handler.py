@@ -14,8 +14,8 @@ class IstioHandler:
         self.kubernetes_utility = kubernetes_utility
         self.certificate_data = {}
         self.gateway_data = {}
-        self._handle_annotations()
         self._check_gateway_exists()
+        self._handle_annotations()
 
     def create_certificate(self):
         try:
@@ -56,11 +56,7 @@ class IstioHandler:
 
     def create_gateway(self):
         try:
-            if self.request_object["spec"]["gateways"] == [] or not self.request_object["spec"]["gateways"][0].startswith("istio-system/"):
-                logging.error("Gateway needs to be in the istio-system namespace")
-                raise IstioGatewayNamespaceError(
-                    "Gateway must be in the istio-system namespace"
-                )
+
             self.gateway_data = self.kubernetes_utility.create_istio_gateway(
                     f"{self.request_object['spec']['gateways'][0].split('/')[-1]}",
                     "istio-system",
@@ -110,11 +106,14 @@ class IstioHandler:
 
 
     def _check_gateway_exists(self):
-        gateway_name = self.request_object["spec"]["gateways"][0]
-        if "/" in gateway_name:
-            return
-        elif self.kubernetes_utility.get_istio_gateway(
-            gateway_name, self.request_object["metadata"]["namespace"]
+        if self.request_object["spec"]["gateways"] == [] or not self.request_object["spec"]["gateways"][0].startswith("istio-system/"):
+            logging.error("Gateway needs to be in the istio-system namespace")
+            raise IstioGatewayNamespaceError(
+                "Gateway must be in the istio-system namespace"
+            )
+        gateway_name = self.request_object["spec"]["gateways"][0].split("/")[-1]
+        if self.kubernetes_utility.get_istio_gateway(
+            gateway_name, "istio-system"
         ):
             logging.error(
                 f"Gateway {gateway_name} already exists"
