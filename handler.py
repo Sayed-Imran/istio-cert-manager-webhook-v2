@@ -1,7 +1,7 @@
 import logging
 
 from config import CertificateConfig
-from errors import AnnotationDoesNotExist, GatewayAlreadyExists
+from errors import AnnotationDoesNotExist, GatewayAlreadyExists, IstioGatewayNamespaceError
 from kubernetes_utility import KubernetesUtility
 from schemas import CertificateSchema, GatewayOwnerReferenceSchema, VirtualServiceOwnerReferenceSchema
 
@@ -56,22 +56,24 @@ class IstioHandler:
 
     def create_gateway(self):
         try:
+            if self.request_object["spec"]["gateways"] == [] or not self.request_object["spec"]["gateways"][0].startswith("istio-system/"):
+                logging.error("Gateway needs to be in the istio-system namespace")
+                raise IstioGatewayNamespaceError(
+                    "Gateway must be in the istio-system namespace"
+                )
             self.gateway_data = self.kubernetes_utility.create_istio_gateway(
-                    f"{self.request_object['metadata']['name']}",
-                    f"{self.request_object['metadata']['namespace']}",
+                    f"{self.request_object['spec']['gateways'][0].split('/')[-1]}",
+                    "istio-system",
                     self.request_object["spec"]["hosts"],
-                    f"{self.request_object['metadata']['name']}-tls",
-                    VirtualServiceOwnerReferenceSchema(
-                        name=self.request_object["metadata"]["name"],
-                        uid=self.request_object["metadata"]["uid"],
-                    )
+                    f"{self.request_object['metadata']['name']}-tls"
                 )
             logging.info(
-                f"Gateway {self.request_object['metadata']['name']}-gateway created successfully"
+                f"Gateway {self.request_object['spec']['gateways'][0]}-gateway created successfully"
             )
+
         except GatewayAlreadyExists as e:
             logging.error(
-                f"Gateway {self.request_object['metadata']['name']}-gateway already exists"
+                f"Gateway {self.request_object['spec']['gateways'][0]}-gateway already exists"
             )
             raise e
         except Exception as e:

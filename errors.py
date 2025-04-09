@@ -24,3 +24,7 @@ class ClusterIssuerDoesnotExist(Exception):
 class GatewayAlreadyExists(Exception):
     """Exception raised when a gateway already exists."""
     pass
+
+class IstioGatewayNamespaceError(Exception):
+    """Exception raised when there is an error with the Istio gateway namespace."""
+    pass
