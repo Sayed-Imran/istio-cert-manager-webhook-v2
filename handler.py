@@ -14,6 +14,8 @@ class IstioHandler:
         self.kubernetes_utility = kubernetes_utility
         self.certificate_data = {}
         self.gateway_data = {}
+
+    def preflight_check(self):
         self._check_gateway_exists()
         self._handle_annotations()
 
@@ -64,12 +66,12 @@ class IstioHandler:
                     f"{self.request_object['metadata']['name']}-tls"
                 )
             logging.info(
-                f"Gateway {self.request_object['spec']['gateways'][0]}-gateway created successfully"
+                f"Gateway {self.request_object['spec']['gateways'][0]} created successfully"
             )
 
         except GatewayAlreadyExists as e:
             logging.error(
-                f"Gateway {self.request_object['spec']['gateways'][0]}-gateway already exists"
+                f"Gateway {self.request_object['spec']['gateways'][0]} already exists"
             )
             raise e
         except Exception as e:
@@ -127,3 +129,15 @@ class IstioHandler:
                 f"Gateway {gateway_name} does not exist"
             )
 
+    def delete_gateway(self):
+        try:
+            gateway_name = self.request_object["spec"]["gateways"][0].split("/")[-1]
+            logging.info(
+                f"Deleting Gateway {gateway_name}"
+            )
+            self.kubernetes_utility.delete_istio_gateway(
+                gateway_name, "istio-system"
+            )
+            logging.info(f"Gateway {gateway_name} deleted successfully")
+        except Exception as e:
+            logging.error(f"Error deleting gateway: {e}")

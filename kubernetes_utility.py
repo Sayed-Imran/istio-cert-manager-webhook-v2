@@ -187,3 +187,19 @@ class KubernetesUtility:
                 )
             else:
                 raise
+
+    def delete_istio_gateway(self, name: str, namespace: str):
+        try:
+            self.client.delete_namespaced_custom_object(
+                "networking.istio.io",
+                "v1",
+                namespace,
+                "gateways",
+                name,
+            )
+        except ApiException as e:
+            logging.error(f"Error deleting Istio Gateway: {e}")
+            if e.status == 404:
+                logging.error(f"Istio Gateway {name} not found.")
+            else:
+                raise
