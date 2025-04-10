@@ -58,13 +58,25 @@ class IstioHandler:
 
     def create_gateway(self):
         try:
-
-            self.gateway_data = self.kubernetes_utility.create_istio_gateway(
-                    f"{self.request_object['spec']['gateways'][0].split('/')[-1]}",
+            if self.kubernetes_utility.get_istio_gateway(
+                self.request_object["spec"]["gateways"][0].split("/")[-1], "istio-system"
+            ):
+                self.kubernetes_utility.update_istio_gateway(
+                    self.request_object["spec"]["gateways"][0].split("/")[-1],
                     "istio-system",
+                    {"vs": f"{self.request_object['metadata']['namespace']}/{self.request_object['metadata']['name']}"},
                     self.request_object["spec"]["hosts"],
-                    f"{self.request_object['metadata']['name']}-tls"
+                    f"{self.request_object['metadata']['name']}-tls",
                 )
+            else:
+                self.gateway_data = self.kubernetes_utility.create_istio_gateway(
+                        f"{self.request_object['spec']['gateways'][0].split('/')[-1]}",
+                        "istio-system",
+                        {"vs": f"{self.request_object['metadata']['namespace']}/{self.request_object['metadata']['name']}"},
+                        self.request_object["spec"]["hosts"],
+                        f"{self.request_object['metadata']['name']}-tls"
+                    )
+
             logging.info(
                 f"Gateway {self.request_object['spec']['gateways'][0]} created successfully"
             )
@@ -108,26 +120,44 @@ class IstioHandler:
 
 
     def _check_gateway_exists(self):
-        if self.request_object["spec"]["gateways"] == [] or not self.request_object["spec"]["gateways"][0].startswith("istio-system/"):
+        """
+        Check if an Istio Gateway exists and validate its ownership.
+        Raises appropriate exceptions for invalid gateway configurations.
+        """
+        if not self.request_object.get("spec", {}).get("gateways"):
+            logging.error("No gateways specified in the request")
+            raise IstioGatewayNamespaceError("No gateways specified in the request")
+        
+        gateway_reference = self.request_object["spec"]["gateways"][0]
+        if not isinstance(gateway_reference, str) or not gateway_reference.startswith("istio-system/"):
             logging.error("Gateway needs to be in the istio-system namespace")
-            raise IstioGatewayNamespaceError(
-                "Gateway must be in the istio-system namespace"
-            )
-        gateway_name = self.request_object["spec"]["gateways"][0].split("/")[-1]
-        if self.kubernetes_utility.get_istio_gateway(
-            gateway_name, "istio-system"
-        ):
-            logging.error(
-                f"Gateway {gateway_name} already exists"
-            )
-            raise GatewayAlreadyExists(
-                f"Gateway {gateway_name} already exists"
-            )
-
-        else:
-            logging.info(
-                f"Gateway {gateway_name} does not exist"
-            )
+            raise IstioGatewayNamespaceError("Gateway must be in the istio-system namespace")
+        
+        gateway_name = gateway_reference.split("/")[-1]
+        
+        gateway_data = self.kubernetes_utility.get_istio_gateway(gateway_name, "istio-system")
+        if not gateway_data:
+            logging.info(f"Gateway {gateway_name} does not exist")
+            return
+        
+        annotations = gateway_data.get("metadata", {}).get("annotations", {})
+        vs_details = annotations.get("vs", "")
+        
+        current_vs_name = self.request_object.get("metadata", {}).get("name", "")
+        current_vs_namespace = self.request_object.get("metadata", {}).get("namespace", "")
+        
+        try:
+            vs_namespace, vs_name = vs_details.split("/", 1)
+            if vs_name == current_vs_name and vs_namespace == current_vs_namespace:
+                logging.info(f"Gateway {gateway_name} already exists and is owned by the same VirtualService")
+                return
+        except ValueError:
+            # Invalid vs annotation format - treat as unowned
+            pass
+            
+        # Gateway exists but is not owned by this VirtualService
+        logging.error(f"Gateway {gateway_name} already exists")
+        raise GatewayAlreadyExists(f"Gateway {gateway_name} already exists")
 
     def delete_gateway(self):
         try:

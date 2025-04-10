@@ -141,13 +141,14 @@ class KubernetesUtility:
             raise
 
 
-    def create_istio_gateway(self, name: str, namespace:str, hosts: list[str], credential_name: str):
+    def create_istio_gateway(self, name: str, namespace:str, annotations: dict, hosts: list[str], credential_name: str):
         gateway = {
             "apiVersion": "networking.istio.io/v1",
             "kind": "Gateway",
             "metadata": {
                 "name": name,
-                "namespace": namespace
+                "namespace": namespace,
+                "annotations": annotations
             },
             "spec": {
                 "selector": {
@@ -187,6 +188,49 @@ class KubernetesUtility:
                 )
             else:
                 raise
+
+    def update_istio_gateway(self, name: str, namespace: str, annotations: dict, hosts: list[str], credential_name: str):
+        gateway = {
+            "apiVersion": "networking.istio.io/v1",
+            "kind": "Gateway",
+            "metadata": {
+                "name": name,
+                "namespace": namespace,
+                "annotations": annotations
+            },
+            "spec": {
+                "selector": {
+                    "istio": "ingressgateway",
+                },
+                "servers": [
+                    {
+                        "port": {
+                            "number": 443,
+                            "name": "https",
+                            "protocol": "HTTPS",
+                        },
+                        "tls": {
+                            "mode": "SIMPLE",
+                            "credentialName": credential_name,
+                        },
+                        "hosts": hosts,
+                    }
+                ]
+            }
+        }
+
+        try:
+            return self.client.replace_namespaced_custom_object(
+                "networking.istio.io",
+                "v1",
+                namespace,
+                "gateways",
+                name,
+                gateway,
+            )
+        except ApiException as e:
+            logging.error(f"Error updating Istio Gateway: {e}")
+            raise
 
     def delete_istio_gateway(self, name: str, namespace: str):
         try:
